@@ -2,5 +2,5 @@
 
 ## Todos
 
+- [x] Gracefully Shutdown (Close database connection)
 - [ ] Update Golang using Goqu
-- [ ] Gracefully Shutdown (Close database connection)

@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -86,6 +89,16 @@ func main() {
 	mongo := app.Group("mongo")
 	mongo.Get("/blog", application.mongoBlog)
 	mongo.Get("/random", application.mongoRandom)
+
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	go func() {
+		<-c
+		fmt.Println("Gracefully shutting down...")
+		_ = app.Shutdown()
+		_ = sqlDB.Close()
+		_ = mongoClient.Disconnect(context.TODO())
+	}()
 
 	app.Listen("0.0.0.0:8000")
 }
