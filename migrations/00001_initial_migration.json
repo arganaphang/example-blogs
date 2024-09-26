@@ -1,0 +1,35 @@
+{
+  "name": "initial_migration",
+  "operations": [
+    {
+      "create_table": {
+        "name": "blogs",
+        "columns": [
+          {
+            "name": "id",
+            "type": "serial",
+            "pk": true
+          },
+          {
+            "name": "title",
+            "type": "varchar(255)"
+          },
+          {
+            "name": "content",
+            "type": "text"
+          },
+          {
+            "name": "created_at",
+            "type": "timestamp",
+            "default": "NOW()"
+          },
+          {
+            "name": "updated_at",
+            "type": "timestamp",
+            "default": "NOW()"
+          }
+        ]
+      }
+    }
+  ]
+}

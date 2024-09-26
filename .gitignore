@@ -1,0 +1,6 @@
+# Environment Variable
+.env*
+!.env.example
+
+# Binary
+/main
