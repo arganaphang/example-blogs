@@ -29,6 +29,11 @@ type BlogSQL struct {
 	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
 }
 
+const (
+	TABLE_NAME             = "blogs"
+	MATERIALIZE_TABLE_NAME = "random_blogs"
+)
+
 type BlogMongo struct {
 	ID        primitive.ObjectID `json:"id" bson:"_id"`
 	Title     string             `json:"title" bson:"title"`
@@ -100,6 +105,20 @@ func main() {
 		_ = mongoClient.Disconnect(context.TODO())
 	}()
 
+	// Scheduler
+	// jakarta, _ := time.LoadLocation("Asia/Jakarta")
+	// scheduler := cron.New(cron.WithLocation(jakarta))
+	// defer scheduler.Stop()
+	// scheduler.AddFunc("@daily", func() { // */5 * * * * <- every 5 minutes crontab.guru
+	// 	_, err := application.sqlDB.Exec(fmt.Sprintf("REFRESH MATERIALIZED VIEW %s", MATERIALIZE_TABLE_NAME))
+	// 	if err != nil {
+	// 		logrus.Info("failed to randomize blogs")
+	// 		logrus.Info(err.Error())
+	// 		return
+	// 	}
+	// })
+	// go scheduler.Start()
+
 	app.Listen("0.0.0.0:8000")
 }
 
@@ -125,7 +144,7 @@ func (a Application) sqlBlog(c *fiber.Ctx) error {
 		})
 	}
 	blogs := []BlogSQL{}
-	if err := a.sqlDB.Select(&blogs, "SELECT * FROM blogs LIMIT $1 OFFSET $2", limit, offset); err != nil {
+	if err := a.sqlDB.Select(&blogs, fmt.Sprintf("SELECT * FROM %s LIMIT $1 OFFSET $2", MATERIALIZE_TABLE_NAME), limit, offset); err != nil {
 		return c.Status(http.StatusBadRequest).JSON(map[string]string{
 			"message": "failed to get blogs",
 		})
@@ -137,6 +156,12 @@ func (a Application) sqlBlog(c *fiber.Ctx) error {
 }
 
 func (a Application) sqlRandom(c *fiber.Ctx) error {
+	if _, err := a.sqlDB.Exec(fmt.Sprintf("REFRESH MATERIALIZED VIEW %s", MATERIALIZE_TABLE_NAME)); err != nil {
+		return c.Status(http.StatusBadRequest).JSON(map[string]string{
+			"message": "failed to randomize blogs",
+			"error":   err.Error(),
+		})
+	}
 	return c.Status(http.StatusOK).JSON(map[string]string{
 		"message": "seed successfully",
 	})
