@@ -35,3 +35,18 @@ REFRESH MATERIALIZED VIEW CONCURRENTLY random_blogs;
 ```sql
 DROP MATERIALIZED VIEW random_blogs;
 ```
+
+- Another Query to simulate and check count of original table + clone table
+
+```sql
+INSERT INTO public.blogs (title, content) VALUES ('another testing', 'test content test');
+
+select count(1) from public.blogs;
+
+select count(1) from public.random_blogs;
+
+REFRESH MATERIALIZED VIEW random_blogs;
+
+with ori as (select count(1) from public.blogs), clone as (select count(1) from public.random_blogs)
+select ori, clone from ori, clone;
+```
