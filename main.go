@@ -15,6 +15,8 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
+	"github.com/robfig/cron/v3"
+	"github.com/sirupsen/logrus"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -106,18 +108,25 @@ func main() {
 	}()
 
 	// Scheduler
-	// jakarta, _ := time.LoadLocation("Asia/Jakarta")
-	// scheduler := cron.New(cron.WithLocation(jakarta))
-	// defer scheduler.Stop()
-	// scheduler.AddFunc("@daily", func() { // */5 * * * * <- every 5 minutes crontab.guru
-	// 	_, err := application.sqlDB.Exec(fmt.Sprintf("REFRESH MATERIALIZED VIEW %s", MATERIALIZE_TABLE_NAME))
-	// 	if err != nil {
-	// 		logrus.Info("failed to randomize blogs")
-	// 		logrus.Info(err.Error())
-	// 		return
-	// 	}
-	// })
-	// go scheduler.Start()
+	jakarta, _ := time.LoadLocation("Asia/Jakarta")
+	scheduler := cron.New(cron.WithLocation(jakarta))
+	defer scheduler.Stop()
+	scheduler.AddFunc("*/1 * * * *", func() { // */1 * * * * <- every 5 minutes crontab.guru
+		logrus.Info("RANDOMIZE START")
+		// SQL
+		if err := application.randSql(context.TODO()); err != nil {
+			logrus.Info("failed to randomize sql blogs")
+			logrus.Info(err.Error())
+			return
+		}
+		// Mongo
+		if err := application.randMongo(context.TODO()); err != nil {
+			logrus.Info("failed to randomize mongo blogs")
+			logrus.Info(err.Error())
+			return
+		}
+	})
+	go scheduler.Start()
 
 	app.Listen("0.0.0.0:8000")
 }
@@ -156,15 +165,22 @@ func (a Application) sqlBlog(c *fiber.Ctx) error {
 }
 
 func (a Application) sqlRandom(c *fiber.Ctx) error {
-	if _, err := a.sqlDB.Exec(fmt.Sprintf("REFRESH MATERIALIZED VIEW %s", MATERIALIZE_TABLE_NAME)); err != nil {
+	if err := a.randSql(c.Context()); err != nil {
 		return c.Status(http.StatusBadRequest).JSON(map[string]string{
-			"message": "failed to randomize blogs",
+			"message": "randomize sql blogs failed",
 			"error":   err.Error(),
 		})
 	}
 	return c.Status(http.StatusOK).JSON(map[string]string{
-		"message": "seed successfully",
+		"message": "randomize sql blogs successfully",
 	})
+}
+
+func (a Application) randSql(_ context.Context) error {
+	if _, err := a.sqlDB.Exec(fmt.Sprintf("REFRESH MATERIALIZED VIEW %s", MATERIALIZE_TABLE_NAME)); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (a Application) mongoBlog(c *fiber.Ctx) error {
@@ -182,7 +198,7 @@ func (a Application) mongoBlog(c *fiber.Ctx) error {
 			"message": "failed to parse offset query",
 		})
 	}
-	csr, err := a.mongoDB.Collection("blogs").Find(
+	csr, err := a.mongoDB.Collection(MATERIALIZE_TABLE_NAME).Find(
 		c.Context(),
 		bson.M{},
 		options.
@@ -212,7 +228,30 @@ func (a Application) mongoBlog(c *fiber.Ctx) error {
 }
 
 func (a Application) mongoRandom(c *fiber.Ctx) error {
+	if err := a.randMongo(c.Context()); err != nil {
+		return c.Status(http.StatusOK).JSON(map[string]string{
+			"message": "randomize mongo blogs failed",
+			"error":   err.Error(),
+		})
+	}
 	return c.Status(http.StatusOK).JSON(map[string]string{
-		"message": "seed successfully",
+		"message": "randomize mongo blogs successfully",
 	})
+}
+
+func (a Application) randMongo(ctx context.Context) error {
+	if err := a.mongoDB.Collection(MATERIALIZE_TABLE_NAME).Drop(ctx); err != nil {
+		return err
+	}
+	total, err := a.mongoDB.Collection(TABLE_NAME).CountDocuments(context.TODO(), bson.D{}, nil)
+	if err != nil {
+		return err
+	}
+	if _, err := a.mongoDB.Collection(TABLE_NAME).Aggregate(ctx, mongo.Pipeline{
+		bson.D{{Key: "$sample", Value: bson.D{{Key: "size", Value: total}}}},
+		bson.D{{Key: "$out", Value: MATERIALIZE_TABLE_NAME}},
+	}); err != nil {
+		return err
+	}
+	return nil
 }
